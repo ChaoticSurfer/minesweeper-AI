@@ -103,7 +103,9 @@ class Sentence:
         self.safes = set()
 
     def __eq__(self, other):
-        return self.cells == other.cells and self.count == other.count
+        if isinstance(other, type(self)):
+            return self.cells == other.cells and self.count == other.count
+        return False
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -157,6 +159,7 @@ class MinesweeperAI:
 
         # Keep track of which cells have been clicked on
         self.moves_made = set()
+        self.history = []
 
         # Keep track of cells known to be safe or mines
         self.mines = set()
@@ -197,7 +200,7 @@ class MinesweeperAI:
     def mark_mine_for_AI_and_sentence(self, cell, sentence):
         """Marks a cell as a safe for AI and sentence"""
         self.mark_mine(cell)
-        sentence.mark_safe(cell)
+        sentence.mark_mine(cell)
 
     def mark_mine_global(self, cell):
         """
@@ -217,11 +220,11 @@ class MinesweeperAI:
         for sentence in self.knowledge:
             sentence.mark_safe(cell)
 
-    def update_sentence_sentence_according_to_AI_info(self, s):
+    def update_sentence_according_to_AI_info(self, sentence):
         for safe in self.safes:
-            s.mark_safe(safe)
+            sentence.mark_safe(safe)
         for mine in self.mines:
-            s.mark_mine(mine)
+            sentence.mark_mine(mine)
 
     def get_neighbours(self, cell):  # utility function
         """ Get set of neighbours of the cell """
@@ -239,8 +242,8 @@ class MinesweeperAI:
     def infer_from_all_sentences_without_combining_them_and_give_results_to_AI(self):  # utility function
         """Try to infer from all sentences without combining different sentences and if got results  and spread them"""
         for sentence in tuple(self.knowledge):
-            self.infer_from_single_sentence_without_combining(sentence)
-            # self.load_safes_and_mines_from_a_sentence_to_everywhere(sentence) # not needed
+            s = self.get_shortened_sentence_and_try_inference(sentence)
+            self.load_safes_and_mines_from_sentence_to_AI(s)
 
     def infer_from_single_sentence_without_combining(self, sentence):
         if not bool(sentence.cells):
@@ -250,7 +253,7 @@ class MinesweeperAI:
         # inferred using count = len
         if sentence.count == len(sentence.cells):
             inferred_something = True
-            print("inferred using count = len", sentence)
+            print("inferred using count = len |comment->", sentence)
             for cell in tuple(sentence.cells):
                 self.mark_mine_for_AI_and_sentence(cell, sentence)
 
@@ -266,22 +269,16 @@ class MinesweeperAI:
             self.load_safes_and_mines_from_sentence_to_AI(sentence)
 
     def process_and_add_sentence_to_knowledge(self, s):
-        self.infer_from_single_sentence_without_combining(s)
-        # self.add_new_shortened_Sentence_if_possible(s)
-        new_s = self.get_shortened_sentence(sentence=s)
-        if new_s != False:
-            s = new_s
-            self.infer_from_single_sentence_without_combining(s)
+        s = self.get_shortened_sentence_and_try_inference(s)
+        if len(s.cells) == 0:
+            return
 
-        sub_s = self.sub_sentence_generation_from_single_sentence_againist_knowledge(s)
-
+        sub_ss = self.sub_sentence_generation_from_single_sentence_againist_knowledge(s)
 
         self.knowledge.append(s)  # add out sentence
-        if sub_s != False:  # add sub sentence if possible to generate
-            for s in sub_s:
-                self.infer_from_single_sentence_without_combining(s)
 
-
+        if bool(sub_ss) != False:  # add sub sentence if possible to generate
+            self.knowledge.extend(sub_ss)
 
     def add_knowledge(self, cell, count):
         """
@@ -299,7 +296,7 @@ class MinesweeperAI:
                if they can be inferred from existing knowledge
         """
         logging.info("add_knowledge")
-
+        self.history.append(cell)
         self.moves_made.add(cell)  # 1
         self.mark_safe(cell)  # 2
         cells = self.get_neighbours(cell)
@@ -315,7 +312,7 @@ class MinesweeperAI:
 
     # check     aghr
 
-    def get_shortened_sentence(self, sentence):
+    def try_get_shortened_sentence_or_False(self, sentence):
         """ return sentence based on known safes and mines"""
 
         if not sentence.cells:
@@ -336,48 +333,34 @@ class MinesweeperAI:
 
         s = Sentence(new_sentence_cells, new_sentence_count)
 
-        self.infer_from_single_sentence_without_combining(s)
-
         if s == sentence:
             return False
         return s
 
+    def get_shortened_sentence_and_try_inference(self, sentence):
+        s = self.try_get_shortened_sentence_or_False(sentence)
+        if s != False:
+            sentence = s
+        self.infer_from_single_sentence_without_combining(sentence)
+        return sentence
+
     def add_new_shortened_Sentence_if_possible(self, sentence):
         """add sentence based on known safes and mines"""
-        s = self.get_shortened_sentence(sentence)
-        if s != False:
-            self.knowledge.append(s)
-
-    def sub_sentence_addition_to_knowledgebase(self):
-        """ find sub sentence and if exists calculate new c -> a-b=c and add to knowledge """
-        knowledge = tuple(self.knowledge)
-
-        for sentence1 in knowledge:
-            for sentence2 in knowledge:
-                if sentence1 != sentence2:
-
-                    if not sentence1.cells or not sentence2.cells:  # if so count also = 0, cells is empty nothing to do here.
-                        continue
-
-                    if sentence2.cells.issubset(sentence1.cells):
-                        cells = sentence1.cells.difference(sentence2.cells)
-                        count = sentence1.count - sentence2.count
-
-                        if not bool(cells):
-                            continue  # validate so that it is not shortened sentence
-
-                        s = Sentence(cells, count)
-                        self.knowledge.append(s)
-                        logging.info(f"sub_sentence_addition_to_knowledgebase   {s}  ")
+        s = self.get_shortened_sentence_and_try_inference(sentence)
+        self.knowledge.append(s)
 
     def sub_sentence_generation_from_single_sentence_againist_knowledge(self, sentence1):
         results = []
+        sentence1 = self.get_shortened_sentence_and_try_inference(sentence1)
+
         for sentence2 in self.knowledge:
             if sentence2 == sentence1:
                 continue
 
             if not sentence1.cells or not sentence2.cells:  # if count also = 0, cells is empty nothing to do here.
                 continue
+
+            sentence2 = self.get_shortened_sentence_and_try_inference(sentence2)
 
             found_subset = False
 
@@ -403,7 +386,7 @@ class MinesweeperAI:
                 results.append(s)
                 logging.info(f"sub_sentence_addition_to_knowledgebase   {s}  ")
 
-        if  not results:
+        if not bool(results):
             return False
         return results
 
