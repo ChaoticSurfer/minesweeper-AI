@@ -239,12 +239,6 @@ class MinesweeperAI:
         neighbours.remove(cell)
         return neighbours
 
-    def infer_from_all_sentences_without_combining_them_and_give_results_to_AI(self):  # utility function
-        """Try to infer from all sentences without combining different sentences and if got results  and spread them"""
-        for sentence in tuple(self.knowledge):
-            s = self.get_shortened_sentence_and_try_inference(sentence)
-            self.load_safes_and_mines_from_sentence_to_AI(s)
-
     def infer_from_single_sentence_without_combining(self, sentence):
         if not bool(sentence.cells):
             return  # check. should not be any need
@@ -268,16 +262,20 @@ class MinesweeperAI:
         if inferred_something:
             self.load_safes_and_mines_from_sentence_to_AI(sentence)
 
+    def infer_from_all_sentences_without_combining_them_and_give_results_to_AI(self):  # utility function
+        """Try to infer from all sentences without combining different sentences and if got results  and spread them"""
+        for sentence in tuple(self.knowledge):
+            self.get_shortened_sentence_and_try_inference(sentence)
+
     def process_and_add_sentence_to_knowledge(self, s):
         s = self.get_shortened_sentence_and_try_inference(s)
         if len(s.cells) == 0:
             return
 
         sub_ss = self.sub_sentence_generation_from_single_sentence_againist_knowledge(s)
-
         self.knowledge.append(s)  # add out sentence
 
-        if bool(sub_ss) != False:  # add sub sentence if possible to generate
+        if len(sub_ss) != 0:  # add sub sentence if possible to generate
             self.knowledge.extend(sub_ss)
 
     def add_knowledge(self, cell, count):
@@ -296,7 +294,7 @@ class MinesweeperAI:
                if they can be inferred from existing knowledge
         """
         logging.info("add_knowledge")
-        self.history.append(cell)
+        self.history.append(cell)  # no need, for debugging
         self.moves_made.add(cell)  # 1
         self.mark_safe(cell)  # 2
         cells = self.get_neighbours(cell)
@@ -382,7 +380,6 @@ class MinesweeperAI:
 
             if found_subset:
                 s = Sentence(cells, count)
-                # self.process_and_add_sentence_to_knowledge(s)
                 results.append(s)
                 logging.info(f"sub_sentence_addition_to_knowledgebase   {s}  ")
 
